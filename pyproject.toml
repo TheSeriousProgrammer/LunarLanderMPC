@@ -1,0 +1,14 @@
+[project]
+name = "lunarlander"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "datasets>=4.8.4",
+    "gymnasium[box2d]>=1.2.3",
+    "lightning>=2.6.1",
+    "swig>=4.4.1",
+    "torch>=2.11.0",
+    "tqdm>=4.67.3",
+]
