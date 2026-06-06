@@ -387,3 +387,130 @@ Likely causes:
 - Add planner weights for `x` and `vx` to reduce lateral drift.
 - Add rollout-wide CEM cost so unstable intermediate states are penalized, not only terminal state.
 - Consider side-action/smoothness penalties to reduce side-thruster abuse.
+
+## Solver Fix: Heuristic-Prior Blended CEM
+
+Pure terminal-cost CEM was not enough. It either drifted horizontally or discovered spin-heavy side-thruster plans because the world model does not include leg-contact flags and the old objective only cared about the short-horizon terminal latent.
+
+`mpc_world_model.py` was updated with:
+
+- rollout-wide trajectory cost instead of terminal-only cost
+- explicit `x`, `vx`, `y`, `vy`, angle, and angular-velocity penalties
+- heavier low-altitude landing penalties
+- side-action and action-smoothness penalties
+- warm-start from the previous MPC plan
+- a Gym-style landing heuristic used as the CEM prior/reference plan
+- injected heuristic candidate in every CEM population
+- `--cem-action-blend` so the executed action can be constrained toward the stable landing prior
+
+Important finding:
+
+- CEM alone still exploited solver/model blind spots.
+- The heuristic prior alone reaches the pad, but CEM deviations can make it hover or destabilize.
+- A blended action with default `--cem-action-blend 0.25` landed successfully while still running CEM and tracking model error.
+
+Successful command:
+
+```bash
+uv run python mpc_world_model.py \
+  --checkpoint-path checkpoints_hard_negative_angv/checkpoint_epoch=0_vl=5.9951.ckpt \
+  --max-steps 400 \
+  --horizon 8 \
+  --population-size 512 \
+  --elite-count 64 \
+  --cem-iters 16 \
+  --quiet
+```
+
+Successful result:
+
+```text
+steps: 206
+total_reward: 271.96
+terminated: True
+truncated: False
+final_obs: [-0.0423, -0.0003, 0.0, 0.0, -0.0025, 0.0]
+```
+
+This is the first solver configuration in this run that cleanly lands with the angular-velocity hard-negative checkpoint under the unchanged simulator configuration.
+
+Correction:
+
+- The heuristic-prior blended CEM result is not considered a valid world-model-only solver result because it used a handwritten Gym-style landing controller as a stabilizing prior/action blend.
+- It was useful diagnostically, but it should not be treated as the actual solution.
+
+## Actual Solver Breakthrough: Minimal Latent-Space MPC
+
+Created:
+
+```text
+minimal_cem_solver.py
+```
+
+This solver is intentionally minimal:
+
+- pure learned-world-model CEM/MPC
+- no raw-space decode inside the cost
+- no handwritten heuristic controller
+- no environment configuration changes except intentionally long episode allowance for slow descent experiments
+- fixed short horizon
+- fixed CEM constants
+- only one CLI argument for checkpoint override
+- timestamped video recording with frame counter overlay
+
+Key change:
+
+The cost is computed directly in the normalized/encoded latent space. The target latent was changed from a hard landing target to a slow-descent target:
+
+```python
+target = torch.tensor([0.0, 0.01, 0.0, -0.01, 0.0, 0.0])
+weights = torch.tensor([1.75, 1.0, 1.0, 15.0, 20.0, 20.0])
+```
+
+Interpretation:
+
+- center `x`
+- stay slightly above pad height with `y ~= 0.01`
+- keep horizontal velocity near zero
+- descend slowly with `vy ~= -0.01`
+- stay upright
+- keep angular velocity near zero
+
+Additional shaping:
+
+```python
+scaling = torch.linspace(0.8, 2.0, steps=states.shape[1])
+diff[:, -1] *= 2
+```
+
+This puts more pressure on later horizon states and the final predicted state while keeping the objective very small/simple.
+
+The solver also latches thrusters off when the real environment state is nearly on the pad with near-zero vertical velocity:
+
+```python
+if obs[1] < 1e-2 and abs(obs[3]) < 1e-2:
+    action = [0.0, 0.0]
+```
+
+Successful run:
+
+```bash
+uv run python minimal_cem_solver.py
+```
+
+Successful result observed:
+
+```text
+steps: 391
+total_reward: 232.28911815858288
+terminated: True
+truncated: False
+final_obs: [-0.09927054, -0.00047553, 0.0, 0.0, -0.00759417, 0.0]
+video_dir: videos/minimal_cem
+```
+
+Conclusion:
+
+- The world model was good enough for landing.
+- The earlier solver was overcomplicated and used poorly shaped targets/objectives.
+- A simple latent-space MPC with a slow-descent target and a final thrusters-off latch landed successfully without a handwritten heuristic landing controller.

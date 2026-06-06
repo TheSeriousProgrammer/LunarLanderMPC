@@ -92,9 +92,11 @@ def main():
     train_ds = split_ds["train"]
     test_ds = split_ds["test"].with_transform(transform)
 
-    lunar_lightning = AngularVelocityHardNegativeLunarModelLightning.load_from_checkpoint(
-        checkpoint_path,
-        lr=args.lr,
+    lunar_lightning = (
+        AngularVelocityHardNegativeLunarModelLightning.load_from_checkpoint(
+            checkpoint_path,
+            lr=args.lr,
+        )
     )
 
     hard_indices, angv_scores, latent_l2_scores = mine_hard_angv_indices(
