@@ -8,7 +8,9 @@ dependencies = [
     "datasets>=4.8.4",
     "gymnasium[box2d]>=1.2.3",
     "lightning>=2.6.1",
+    "moviepy>=2.2.1",
     "swig>=4.4.1",
+    "tensorboard>=2.20.0",
     "torch>=2.11.0",
     "tqdm>=4.67.3",
 ]

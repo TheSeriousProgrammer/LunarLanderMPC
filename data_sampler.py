@@ -12,10 +12,10 @@ for _ in tqdm.tqdm(range(10000)):
     env = gym.make(
         "LunarLander-v3",
         continuous=True,
-        gravity=random.uniform(-8.0, -11.0),
-        enable_wind=random.choice([True, False]),
-        wind_power=random.uniform(0.0, 20.0),
-        turbulence_power=random.uniform(0.0, 2.0),
+        gravity=-10.0,  # random.uniform(-8.0, -11.0),
+        enable_wind=False,  # random.choice([True, False]),
+        wind_power=0.0,  # random.uniform(0.0, 20.0),
+        turbulence_power=0.0,  # random.uniform(0.0, 2.0),
     )
 
     prev_observation, info = env.reset()
@@ -41,6 +41,7 @@ for _ in tqdm.tqdm(range(10000)):
             }
         )
 
+        prev_observation = observation
         episode_over = terminated or truncated
         i += 1
 
